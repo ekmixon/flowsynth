@@ -108,7 +108,7 @@ class FSLexer:
 
         lexer = list(shlex.shlex(synfiledata))
         itr_ctr = 0
-        while len(lexer) > 0:
+        while lexer:
             token = lexer[0]
             #should be the start of a new line
             if (token.lower() == 'flow'):
@@ -122,7 +122,10 @@ class FSLexer:
 
     def resolve_dns(self, shost):
         """Perform DNS lookups once per file, and cache the results. tested."""
-        if (re.match(self.ipv4regex, shost) == None and re.match(self.ipv6regex, shost) == None):
+        if (
+            re.match(self.ipv4regex, shost) is None
+            and re.match(self.ipv6regex, shost) is None
+        ):
             if shost in self.dnscache:
                 logging.debug("Host %s in DNSCACHE, returned %s", shost, self.dnscache[shost])
                 shost = self.dnscache[shost]
@@ -135,7 +138,7 @@ class FSLexer:
                     logging.debug("Resolved %s to %s", shost, resolved_ip)
                     shost = resolved_ip
                 except socket.gaierror:
-                    compiler_bailout("Cannot resolve %s" % shost)
+                    compiler_bailout(f"Cannot resolve {shost}")
         return shost
 
     def lex_flow(self, tokens):
@@ -143,7 +146,7 @@ class FSLexer:
         logging.debug("lex_flow() called with %s", tokens)
 
         if (type(tokens) is not list):
-            parser_bailout("FSLexer tried to flowlex a %s" % type(tokens))
+            parser_bailout(f"FSLexer tried to flowlex a {type(tokens)}")
 
         #need to read the following mandatory values:
         try:
@@ -162,13 +165,13 @@ class FSLexer:
                 tok_ctr = tok_ctr + 1
                 if (token == ']'):
                     break
-                flow_src = "%s%s" % (flow_src, token)
+                flow_src = f"{flow_src}{token}"
         else:
             l3_proto = Flow.PROTO_IPV4
             for token in tokens:
                 if (token == ':'):
                     break
-                flow_src = "%s%s" % (flow_src, token)
+                flow_src = f"{flow_src}{token}"
                 tok_ctr = tok_ctr + 1
 
         tokens = tokens[tok_ctr+1:]
@@ -179,8 +182,8 @@ class FSLexer:
         tokens = tokens[1:]
 
         directionality = tokens[0]
-        if (directionality != ">" and directionality != "<"):
-            raise SynSyntaxError("Unexpected flow directionality: %s" % directionality)
+        if directionality not in [">", "<"]:
+            raise SynSyntaxError(f"Unexpected flow directionality: {directionality}")
         tokens = tokens[1:]
 
         flow_dst = ""
@@ -193,14 +196,14 @@ class FSLexer:
                 tok_ctr = tok_ctr + 1
                 if (token == ']'):
                     break
-                flow_dst = "%s%s" % (flow_dst, token)
+                flow_dst = f"{flow_dst}{token}"
         else:
             if l3_proto != Flow.PROTO_IPV4:
                 raise SynSyntaxError("Inconsistent layer 3 protocols")
             for token in tokens:
                 if (token == ':'):
                     break
-                flow_dst = "%s%s" % (flow_dst, token)
+                flow_dst = f"{flow_dst}{token}"
                 tok_ctr = tok_ctr + 1
 
         tokens = tokens[tok_ctr+1:]
@@ -210,19 +213,17 @@ class FSLexer:
             raise SynSyntaxError("No flow destination port specified")
         tokens = tokens[1:]
 
-        if (l4_proto.lower() == 'udp'):
-            l4_proto = Flow.PROTO_UDP
-        else:
-            l4_proto = Flow.PROTO_TCP
-
+        l4_proto = Flow.PROTO_UDP if (l4_proto.lower() == 'udp') else Flow.PROTO_TCP
         #start to build our flow decl
-        flowdecl = {}
-        flowdecl['type'] = 'flow'
-        flowdecl['name'] = flow_name
-        flowdecl['l3_proto'] = l3_proto
-        flowdecl['l4_proto'] = l4_proto
-        flowdecl['src_host'] = self.resolve_dns(flow_src)
-        flowdecl['src_port'] = flow_src_port
+        flowdecl = {
+            'type': 'flow',
+            'name': flow_name,
+            'l3_proto': l3_proto,
+            'l4_proto': l4_proto,
+            'src_host': self.resolve_dns(flow_src),
+            'src_port': flow_src_port,
+        }
+
         flowdecl['dst_host'] = self.resolve_dns(flow_dst)
         flowdecl['dst_port'] = flow_dst_port
         flowdecl['flow'] = directionality
@@ -233,7 +234,7 @@ class FSLexer:
 
             #return flowdecl, tokens
             return (flowdecl, tokens)
-        elif (tokens[0] == '('):
+        elif tokens[0] == '(':
             tokens = tokens[1:]
             #parse modifiers
 
@@ -255,18 +256,18 @@ class FSLexer:
                         single_modifier = True
                         break
                     else:
-                        modifier_key = "%s%s" % (modifier_key, token)
+                        modifier_key = f"{modifier_key}{token}"
                         tok_ctr = tok_ctr + 1
 
                 if (single_modifier == False):
                     modifier_value = ""
                     tok_ctr = 0
                     for token in tokens:
-                        if (token == ';' or token == ")"):
+                        if token in [';', ")"]:
                             tokens = tokens[tok_ctr+1:]
                             break
                         else:
-                            modifier_value = "%s%s" % (modifier_value, token)
+                            modifier_value = f"{modifier_value}{token}"
                             tok_ctr = tok_ctr + 1
                 else:
                     modifier_value = True
@@ -277,7 +278,7 @@ class FSLexer:
 
             return (flowdecl, tokens)
         else:
-            parser_bailout("Invalid Syntax. unexpected value %s" % tokens[0])
+            parser_bailout(f"Invalid Syntax. unexpected value {tokens[0]}")
 
 
     def lex_event(self, tokens):
@@ -286,25 +287,22 @@ class FSLexer:
 
         flow_name = tokens[0]
         try:
-            if (tokens[1] == '.'):
-                idx_flowdir = 2
-            else:
-                idx_flowdir = 1
+            idx_flowdir = 2 if (tokens[1] == '.') else 1
         except IndexError:
             parser_bailout("Invalid Syntax. Unexpected flow directionality.")
 
         flow_directionality = tokens[idx_flowdir]
         tokens = tokens[idx_flowdir+1:]
 
-        eventdecl = {}
-        eventdecl['name'] = flow_name
-        eventdecl['type'] = 'event'
-        eventdecl['attributes'] = {}
-        eventdecl['contents'] = []
-        if (flow_directionality == '>' or flow_directionality == 'to_server'):
-            eventdecl['flow'] = Flow.FLOW_TO_SERVER
-        else:
-            eventdecl['flow'] = Flow.FLOW_TO_CLIENT
+        eventdecl = {
+            'name': flow_name,
+            'type': 'event',
+            'attributes': {},
+            'contents': [],
+            'flow': Flow.FLOW_TO_SERVER
+            if flow_directionality in ['>', 'to_server']
+            else Flow.FLOW_TO_CLIENT,
+        }
 
         if (tokens[0] == '('):
             tokens = tokens[1:]
@@ -327,18 +325,18 @@ class FSLexer:
                         single_modifier = True
                         break
                     else:
-                        modifier_key = "%s%s" % (modifier_key, token)
+                        modifier_key = f"{modifier_key}{token}"
                         tok_ctr = tok_ctr + 1
 
                 if (single_modifier == False):
                     modifier_value = ""
                     tok_ctr = 0
                     for token in tokens:
-                        if (token == ';' or token == ")"):
+                        if token in [';', ")"]:
                             tokens = tokens[tok_ctr+1:]
                             break
                         else:
-                            modifier_value = "%s%s" % (modifier_value, token)
+                            modifier_value = f"{modifier_value}{token}"
                             tok_ctr = tok_ctr + 1
                 else:
                     modifier_value = True
@@ -432,7 +430,10 @@ class Flow:
             if self._valid_mac(smac):
                 self.src_mac = smac
             else:
-                parser_bailout("A src_mac ({}) was explicitly set, but it doesn't appear to be valid.".format(smac))
+                parser_bailout(
+                    f"A src_mac ({smac}) was explicitly set, but it doesn't appear to be valid."
+                )
+
 
         if 'dst_mac' in flowdecl['attributes']:
             logging.debug("Using user-supplied dest mac")
@@ -440,7 +441,10 @@ class Flow:
             if self._valid_mac(dmac):
                 self.dst_mac = dmac
             else:
-                parser_bailout("A dst_mac ({}) was explicitly set, but it doesn't appear to be valid.".format(dmac))
+                parser_bailout(
+                    f"A dst_mac ({dmac}) was explicitly set, but it doesn't appear to be valid."
+                )
+
 
 
         self.to_server_seq = random.randint(10000, 99999)
@@ -458,9 +462,7 @@ class Flow:
     def _valid_mac(self, mac):
         mac_re = r'[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}'
         valid_mac = re.match(mac_re, mac)
-        if valid_mac != None:
-            return True
-        return False
+        return valid_mac != None
 
     #has test case
     #This function expects all inputs to be enclosed within double quotes
@@ -476,7 +478,7 @@ class Flow:
         #first, check for text
         mo_text = re.match(pcre_text, content)
         if (mo_text != None):
-            content_text = mo_text.group(1)
+            content_text = mo_text[1]
             logging.debug("Content: %s (length %d)" % (content_text, len(content_text)))
             start = 0
             previous_end = 0
@@ -507,9 +509,9 @@ class Flow:
             elif previous_end < len(content_text):
                 # add the last substring
                 try:
-                    result.extend(content_text[previous_end:len(content_text)].encode('utf-8'))
+                    result.extend(content_text[previous_end:].encode('utf-8'))
                 except UnicodeDecodeError:
-                    result.extend(content_text[previous_end:len(content_text)])
+                    result.extend(content_text[previous_end:])
 
         return result
 
@@ -541,27 +543,25 @@ class Flow:
         filepath = filepath.strip()[1:-1]
         try:
             fdata = bytearray()
-            fptr = open(filepath,'rb')
-            fdata = fptr.read()
-            fptr.close()
+            with open(filepath,'rb') as fptr:
+                fdata = fptr.read()
             return fdata
         except IOError:
-            raise SynCompileError("File not found -- %s" % filepath)
-            sys.exit(-1)
+            raise SynCompileError(f"File not found -- {filepath}")
 
-    def format_port(port):
+    def format_port(self):
         """format a port specifier"""
-        if type(port) == int:
-            return int(port)
-        elif type(port) == str and port.upper() == 'ANY':
+        if type(self) == int:
+            return int(self)
+        elif type(self) == str and self.upper() == 'ANY':
             #return a random port between 1024 and 65k
             return random.randint(1024, 65000)
-        elif type(port) == str:
+        elif type(self) == str:
             try:
-                port = int(port)
-                return port
+                self = int(self)
+                return self
             except ValueError:
-                raise SynSyntaxError("Invalid Syntax. %s is not a valid port" % port)
+                raise SynSyntaxError(f"Invalid Syntax. {self} is not a valid port")
 
     def render(self, eventid):
         """ render a specific eventid """

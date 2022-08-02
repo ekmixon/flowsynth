@@ -41,7 +41,7 @@ def print_debug(msg):
         print("\t%s" % msg)
 
 def print_error(msg):
-    print("ERROR! %s" % msg)
+    print(f"ERROR! {msg}")
     sys.exit(1)
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! #
@@ -73,29 +73,22 @@ if not os.path.isfile(poc_file):
 
 # try to get CVE based on name and/or path
 cve = "CVE-unknown"
-result = cve_re.search(os.path.abspath(poc_file))
-if result:
+if result := cve_re.search(os.path.abspath(poc_file)):
     cve = result.group('CVE')
 
-print("Creating pcap for %s" % cve)
+print(f"Creating pcap for {cve}")
 
-if len(sys.argv) > 2:
-    pcap_file = sys.argv[2]
-else:
-    pcap_file = "%s_%s.pcap" % (cve, os.getpid())
-
+pcap_file = sys.argv[2] if len(sys.argv) > 2 else f"{cve}_{os.getpid()}.pcap"
 # make the flowsynth file
 fs_fh = tempfile.NamedTemporaryFile(mode='w')
-print_debug("FlowSynth file: %s" % fs_fh.name)
+print_debug(f"FlowSynth file: {fs_fh.name}")
 
 client_ip = "192.168.%d.%d" % (random.randint(0,255), random.randint(0,255))
 server_ip = "172.%d.%d.%d" % (random.randint(16,31), random.randint(0,255), random.randint(0,255))
 if not file_from_external_net:
-    client_ip_temp = client_ip
-    client_ip = server_ip
-    server_ip = client_ip_temp
-print_debug("Client IP: %s" % client_ip)
-print_debug("Server IP: %s" % server_ip)
+    client_ip, server_ip = server_ip, client_ip
+print_debug(f"Client IP: {client_ip}")
+print_debug(f"Server IP: {server_ip}")
 
 # get file size
 file_size = os.path.getsize(poc_file)
